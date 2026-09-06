@@ -4,8 +4,6 @@ import argparse
 from collections import Counter
 from pathlib import Path
 
-import pandas as pd
-
 from .config import load_config
 from .data import (
     apply_minmax,
@@ -13,6 +11,7 @@ from .data import (
     chronological_split_codes,
     fit_minmax,
     load_and_clean_ngsim,
+    read_input_columns,
     save_graph_dataset,
 )
 from .reproducibility import sha256_file, write_json
@@ -21,7 +20,7 @@ from .reproducibility import sha256_file, write_json
 def preprocess(config: dict, input_path: str | Path | None = None) -> dict:
     data_config = config["data"]
     csv_path = Path(input_path or data_config["raw_csv"])
-    raw_columns = set(pd.read_csv(csv_path, nrows=0).columns)
+    raw_columns = read_input_columns(csv_path)
     frame = load_and_clean_ngsim(csv_path, data_config)
     samples = build_aligned_graph_windows(frame, data_config)
     if data_config["split"].get("strategy") != "chronological":
@@ -49,6 +48,8 @@ def preprocess(config: dict, input_path: str | Path | None = None) -> dict:
         "class_encoding": {"low": 0, "medium": 1, "high": 2},
         "graph_label_reduction": data_config["graph_label_reduction"],
         "labeling_source": resolve_labeling_source(data_config, raw_columns),
+        "kinematics_source": resolve_kinematics_source(raw_columns),
+        "location_column": data_config.get("location_column"),
         "split_counts": {
             split_names[code]: int(count) for code, count in Counter(split_codes.tolist()).items()
         },
@@ -69,6 +70,16 @@ def resolve_labeling_source(data_config: dict, raw_columns: set[str]) -> str:
     ):
         return "existing Risk_Class column"
     return "configured heuristic assumptions"
+
+
+def resolve_kinematics_source(raw_columns: set[str]) -> str:
+    present = {column for column in ("v_Vel", "v_Acc") if column in raw_columns}
+    if len(present) == 2:
+        return "existing v_Vel and v_Acc columns"
+    if not present:
+        return "derived v_Vel and v_Acc from longitudinal position and elapsed time"
+    missing = ({"v_Vel", "v_Acc"} - present).pop()
+    return f"existing {present.pop()} column; derived {missing}"
 
 
 def build_parser() -> argparse.ArgumentParser:

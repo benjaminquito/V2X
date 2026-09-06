@@ -19,7 +19,13 @@ data:
   label_column: Risk_Class
   frame_column: Frame_ID
   vehicle_column: Vehicle_ID
+  location_column: Location
   time_column: Global_Time
+  kinematics:
+    derive_missing: true
+    position_column: Local_Y
+    time_scale_to_s: 0.001
+    frame_interval_s: 0.1
   graph_label_reduction: max
   split:
     train: 0.70

@@ -18,14 +18,17 @@ independent LSTM sequences and graph snapshots.
 
 ## Preprocessing
 
-1. Parse the required numeric NGSIM fields.
-2. Sort and deduplicate records by vehicle and frame.
-3. Interpolate selected numeric features within each vehicle, then drop unresolved records.
+1. Parse the required numeric NGSIM fields. When `v_Vel` or `v_Acc` is absent, derive it by finite
+   differences within contiguous vehicle runs and record that fallback in the manifest.
+2. Sort and deduplicate records by location, vehicle, frame, and timestamp when available.
+3. Interpolate selected numeric features within each contiguous vehicle run, then drop unresolved
+   records.
 4. Use a supplied `Risk_Class` when present, or apply the configured heuristic.
 5. If a row limit is requested, make a memory-bounded first CSV pass to count trajectories, select
    complete vehicles with a seeded shuffle, and load only those trajectories on a second pass.
    Sampling complete trajectories avoids destroying temporal continuity.
-6. Construct consecutive 15-step histories and aligned proximity graphs.
+6. Construct consecutive 15-step histories and aligned proximity graphs. For combined datasets,
+   separate trajectories by location and contiguous run and key snapshots by location and time.
 7. Select at most 10,988 graph frames, evenly across chronological coverage when more are available.
 8. Create chronological 70/15/15 splits with a configurable boundary gap.
 9. Fit feature-wise min-max scaling on training histories only and transform all splits.

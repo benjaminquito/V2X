@@ -98,6 +98,10 @@ Or use:
 ./scripts/reproduce.sh configs/default.yaml
 ```
 
+The loader detects CSV and Excel OOXML content from the file signature. This means an uploaded
+workbook can still be read if it was accidentally named `NGSIM.csv`, although using the correct
+`.xlsx` suffix is recommended.
+
 Generated files include:
 
 - `data/processed/ngsim_aligned_graph_windows.npz`: aligned graph/history samples;
@@ -114,11 +118,23 @@ split is chronological and inserts a 14-frame gap at boundaries to reduce leakag
 
 ## Required CSV columns
 
-Core inputs are `Vehicle_ID`, `Frame_ID`, `Local_X`, `Local_Y`, `v_Vel`, and `v_Acc`. If the CSV
-already contains `Risk_Class`, it is used after validation. Otherwise, `Time_Headway` and
-`Space_Headway` are also required and labels are generated from the explicit thresholds in the
-configuration. The manuscript did not state the numerical labeling thresholds, so the supplied
-values are transparent repository assumptions that researchers should review or replace.
+Core inputs are `Vehicle_ID`, `Frame_ID`, `Local_X`, and `Local_Y`. The preferred input also has
+`v_Vel` and `v_Acc`. When either kinematic field is absent, preprocessing derives it from
+longitudinal position and elapsed time using the explicit settings under `data.kinematics`.
+Existing kinematic columns are never replaced. If the CSV already contains `Risk_Class`, it is used
+after validation. Otherwise, `Time_Headway` and `Space_Headway` are also required and labels are
+generated from the explicit thresholds in the configuration. The manuscript did not state the
+numerical labeling thresholds, so the supplied values are transparent repository assumptions that
+researchers should review or replace.
+
+Combined files should include `Location`. Preprocessing keeps locations separate, segments reused
+vehicle IDs into contiguous frame runs, and keys graph snapshots by location and timestamp. This
+prevents observations from separate roads or recording sessions from entering the same trajectory
+or proximity graph.
+
+Derived speed and acceleration are a transparent compatibility fallback. Report their use and do
+not treat results based on derived kinematics as directly comparable to experiments that used the
+original NGSIM `v_Vel` and `v_Acc` measurements.
 
 See [`docs/DATA.md`](docs/DATA.md) before combining NGSIM sites or changing units.
 

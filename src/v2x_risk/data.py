@@ -20,6 +20,8 @@ RISK_NAME_TO_CLASS = {
     "high risk": 2,
     "emergency": 2,
 }
+TRAJECTORY_SEGMENT_COLUMN = "_Trajectory_Segment"
+ZIP_SIGNATURE = b"PK\x03\x04"
 
 
 @dataclass
@@ -108,12 +110,137 @@ def assign_risk_labels(frame: pd.DataFrame, labeling: dict) -> pd.Series:
     return pd.Series(labels, index=frame.index, name="Risk_Class")
 
 
+def trajectory_group_columns(frame: pd.DataFrame, data_config: dict) -> list[str]:
+    """Return columns that uniquely identify a trajectory in a combined NGSIM CSV."""
+
+    columns: list[str] = []
+    location_col = data_config.get("location_column")
+    if location_col and location_col in frame.columns:
+        columns.append(location_col)
+    columns.append(data_config["vehicle_column"])
+    if TRAJECTORY_SEGMENT_COLUMN in frame.columns:
+        columns.append(TRAJECTORY_SEGMENT_COLUMN)
+    return columns
+
+
+def add_trajectory_segments(frame: pd.DataFrame, data_config: dict) -> pd.DataFrame:
+    """Split reused vehicle IDs into contiguous observation runs."""
+
+    vehicle_col = data_config["vehicle_column"]
+    frame_col = data_config["frame_column"]
+    location_col = data_config.get("location_column")
+    base_groups = [vehicle_col]
+    if location_col and location_col in frame.columns:
+        base_groups.insert(0, location_col)
+    time_col = data_config.get("time_column")
+    sort_columns = [*base_groups]
+    if time_col and time_col in frame.columns:
+        sort_columns.append(time_col)
+    sort_columns.append(frame_col)
+    frame = frame.sort_values(sort_columns, kind="stable").reset_index(drop=True)
+
+    observation_key = [*base_groups, frame_col]
+    if time_col and time_col in frame.columns:
+        observation_key.append(time_col)
+    frame = frame.drop_duplicates(observation_key, keep="last").reset_index(drop=True)
+
+    grouped = frame.groupby(base_groups, sort=False, dropna=False)
+    first = grouped.cumcount().eq(0)
+    discontinuity = grouped[frame_col].diff().ne(1)
+    if time_col and time_col in frame.columns:
+        time_difference = grouped[time_col].diff()
+        discontinuity |= time_difference.le(0)
+        kinematics = data_config.get("kinematics", {})
+        expected_step = float(kinematics.get("frame_interval_s", 0.1)) / float(
+            kinematics.get("time_scale_to_s", 0.001)
+        )
+        discontinuity |= ~np.isclose(time_difference, expected_step, rtol=0.0, atol=1e-6)
+    starts = (~first & discontinuity).astype(np.int64)
+    frame[TRAJECTORY_SEGMENT_COLUMN] = starts.groupby(
+        [frame[column] for column in base_groups], sort=False
+    ).cumsum()
+    return frame
+
+
+def derive_missing_kinematics(frame: pd.DataFrame, data_config: dict) -> list[str]:
+    """Derive absent speed/acceleration fields from position and elapsed time.
+
+    NGSIM positions are in feet by default. The absolute derivative of longitudinal
+    position is therefore speed in ft/s, and its derivative is acceleration in
+    ft/s^2. Existing columns are never replaced.
+    """
+
+    options = data_config.get("kinematics", {})
+    if not bool(options.get("derive_missing", False)):
+        return []
+    missing = [column for column in ("v_Vel", "v_Acc") if column not in frame.columns]
+    if not missing:
+        return []
+
+    position_col = options.get("position_column", "Local_Y")
+    if position_col not in frame.columns:
+        raise ValueError(
+            f"Cannot derive {', '.join(missing)} without position column {position_col}"
+        )
+
+    time_col = data_config.get("time_column")
+    frame_col = data_config["frame_column"]
+    time_scale_to_s = float(options.get("time_scale_to_s", 0.001))
+    frame_interval_s = float(options.get("frame_interval_s", 0.1))
+    groups = trajectory_group_columns(frame, data_config)
+    derived = {column: np.full(len(frame), np.nan, dtype=np.float64) for column in missing}
+
+    for positions in frame.groupby(groups, sort=False, dropna=False).indices.values():
+        positions = np.asarray(positions, dtype=np.int64)
+        trajectory = frame.iloc[positions]
+        if time_col and time_col in trajectory.columns:
+            elapsed = trajectory[time_col].to_numpy(dtype=np.float64) * time_scale_to_s
+        else:
+            elapsed = trajectory[frame_col].to_numpy(dtype=np.float64) * frame_interval_s
+        if len(elapsed) < 2 or not np.all(np.diff(elapsed) > 0):
+            elapsed = trajectory[frame_col].to_numpy(dtype=np.float64) * frame_interval_s
+        if len(elapsed) < 2 or not np.all(np.diff(elapsed) > 0):
+            continue
+
+        if "v_Vel" in missing:
+            longitudinal = trajectory[position_col].to_numpy(dtype=np.float64)
+            velocity = np.abs(np.gradient(longitudinal, elapsed))
+            derived["v_Vel"][positions] = velocity
+        else:
+            velocity = trajectory["v_Vel"].to_numpy(dtype=np.float64)
+        if "v_Acc" in missing:
+            acceleration = np.gradient(velocity, elapsed)
+            derived["v_Acc"][positions] = acceleration
+
+    for column, values in derived.items():
+        values[~np.isfinite(values)] = np.nan
+        frame[column] = values
+    return missing
+
+
+def input_is_excel(path: str | Path) -> bool:
+    """Detect OOXML workbooks by content, including files with a .csv suffix."""
+
+    with Path(path).open("rb") as handle:
+        return handle.read(len(ZIP_SIGNATURE)) == ZIP_SIGNATURE
+
+
+def read_input_columns(path: str | Path) -> set[str]:
+    if input_is_excel(path):
+        return set(pd.read_excel(path, engine="openpyxl", nrows=0).columns)
+    return set(pd.read_csv(path, nrows=0).columns)
+
+
 def load_and_clean_ngsim(csv_path: str | Path, data_config: dict) -> pd.DataFrame:
     csv_path = Path(csv_path)
     features = list(data_config["feature_columns"])
     vehicle_col = data_config["vehicle_column"]
     frame_col = data_config["frame_column"]
     label_col = data_config["label_column"]
+
+    raw_columns = read_input_columns(csv_path)
+    location_col = data_config.get("location_column")
+    active_location_col = location_col if location_col in raw_columns else None
 
     sample_rows = data_config.get("sample_rows")
     if sample_rows is not None:
@@ -123,16 +250,22 @@ def load_and_clean_ngsim(csv_path: str | Path, data_config: dict) -> pd.DataFram
             target_rows=int(sample_rows),
             seed=int(data_config["sample_seed"]),
             chunk_rows=int(data_config.get("csv_chunk_rows", 250_000)),
+            location_col=active_location_col,
         )
+    elif input_is_excel(csv_path):
+        frame = pd.read_excel(csv_path, engine="openpyxl")
     else:
         frame = pd.read_csv(csv_path)
 
+    derivable = set()
+    if data_config.get("kinematics", {}).get("derive_missing", False):
+        derivable = {"v_Vel", "v_Acc"}
     required = set(features) | {vehicle_col, frame_col}
-    missing = sorted(required - set(frame.columns))
+    missing = sorted((required - set(frame.columns)) - derivable)
     if missing:
         raise ValueError(f"Missing required NGSIM columns: {', '.join(missing)}")
 
-    numeric_candidates = list(required)
+    numeric_candidates = [column for column in required if column in frame.columns]
     for optional in (data_config.get("time_column"), "Time_Headway", "Space_Headway"):
         if optional and optional in frame.columns:
             numeric_candidates.append(optional)
@@ -142,14 +275,22 @@ def load_and_clean_ngsim(csv_path: str | Path, data_config: dict) -> pd.DataFram
     frame = frame.dropna(subset=[vehicle_col, frame_col]).copy()
     frame[vehicle_col] = frame[vehicle_col].astype(np.int64)
     frame[frame_col] = frame[frame_col].astype(np.int64)
-    frame = frame.sort_values([vehicle_col, frame_col], kind="stable")
-    frame = frame.drop_duplicates([vehicle_col, frame_col], keep="last")
+    frame = add_trajectory_segments(frame, data_config)
+    group_columns = trajectory_group_columns(frame, data_config)
+    derive_missing_kinematics(frame, data_config)
+
+    missing_after_derivation = sorted(required - set(frame.columns))
+    if missing_after_derivation:
+        raise ValueError(
+            "Missing required NGSIM columns after kinematic derivation: "
+            + ", ".join(missing_after_derivation)
+        )
 
     interpolate_columns = [column for column in features if column in frame.columns]
     for column in ("Time_Headway", "Space_Headway"):
         if column in frame.columns:
             interpolate_columns.append(column)
-    frame[interpolate_columns] = frame.groupby(vehicle_col, sort=False)[
+    frame[interpolate_columns] = frame.groupby(group_columns, sort=False)[
         interpolate_columns
     ].transform(lambda group: group.interpolate(limit_direction="both"))
     frame = frame.dropna(subset=features)
@@ -173,24 +314,47 @@ def read_complete_trajectory_sample(
     target_rows: int,
     seed: int,
     chunk_rows: int,
+    location_col: str | None = None,
 ) -> pd.DataFrame:
     """Read an approximately sized sample without loading the full CSV at once."""
 
-    counts: dict[int, int] = {}
-    for chunk in pd.read_csv(csv_path, usecols=[vehicle_col], chunksize=chunk_rows):
-        vehicle_ids = pd.to_numeric(chunk[vehicle_col], errors="coerce").dropna().astype(np.int64)
-        for vehicle_id, count in vehicle_ids.value_counts().items():
-            key = int(vehicle_id)
+    if input_is_excel(csv_path):
+        frame = pd.read_excel(csv_path, engine="openpyxl")
+        if len(frame) <= target_rows:
+            return frame
+        return sample_complete_vehicles(
+            frame,
+            vehicle_col=vehicle_col,
+            target_rows=target_rows,
+            seed=seed,
+            location_col=location_col,
+        )
+
+    usecols = [vehicle_col] if location_col is None else [location_col, vehicle_col]
+    counts: dict[int | tuple[str, int], int] = {}
+    for chunk in pd.read_csv(csv_path, usecols=usecols, chunksize=chunk_rows):
+        vehicle_ids = pd.to_numeric(chunk[vehicle_col], errors="coerce")
+        valid = vehicle_ids.notna()
+        if location_col is not None:
+            valid &= chunk[location_col].notna()
+            keys = zip(
+                chunk.loc[valid, location_col].astype(str),
+                vehicle_ids.loc[valid].astype(np.int64),
+            )
+        else:
+            keys = vehicle_ids.loc[valid].astype(np.int64)
+        for raw_key, count in pd.Series(list(keys)).value_counts().items():
+            key = raw_key if isinstance(raw_key, tuple) else int(raw_key)
             counts[key] = counts.get(key, 0) + int(count)
     if not counts:
         raise ValueError(f"No valid {vehicle_col} values found in {csv_path}")
 
-    vehicle_ids = np.asarray(sorted(counts), dtype=np.int64)
-    np.random.default_rng(seed).shuffle(vehicle_ids)
-    selected: set[int] = set()
+    trajectory_ids = sorted(counts, key=repr)
+    order = np.random.default_rng(seed).permutation(len(trajectory_ids))
+    selected: set[int | tuple[str, int]] = set()
     selected_rows = 0
-    for vehicle_id in vehicle_ids:
-        key = int(vehicle_id)
+    for index in order:
+        key = trajectory_ids[int(index)]
         selected.add(key)
         selected_rows += counts[key]
         if selected_rows >= target_rows:
@@ -199,7 +363,14 @@ def read_complete_trajectory_sample(
     chunks: list[pd.DataFrame] = []
     for chunk in pd.read_csv(csv_path, chunksize=chunk_rows):
         numeric_ids = pd.to_numeric(chunk[vehicle_col], errors="coerce")
-        selected_chunk = chunk[numeric_ids.isin(selected)]
+        if location_col is None:
+            mask = numeric_ids.isin(selected)
+        else:
+            keys = pd.Series(
+                list(zip(chunk[location_col].astype(str), numeric_ids)), index=chunk.index
+            )
+            mask = keys.isin(selected)
+        selected_chunk = chunk[mask]
         if not selected_chunk.empty:
             chunks.append(selected_chunk)
     if not chunks:
@@ -208,21 +379,32 @@ def read_complete_trajectory_sample(
 
 
 def sample_complete_vehicles(
-    frame: pd.DataFrame, vehicle_col: str, target_rows: int, seed: int
+    frame: pd.DataFrame,
+    vehicle_col: str,
+    target_rows: int,
+    seed: int,
+    location_col: str | None = None,
 ) -> pd.DataFrame:
     """Sample whole vehicle trajectories so temporal windows remain intact."""
 
-    counts = frame.groupby(vehicle_col, sort=False).size()
-    vehicle_ids = counts.index.to_numpy().copy()
-    np.random.default_rng(seed).shuffle(vehicle_ids)
-    selected: list[int] = []
+    if location_col and location_col in frame.columns:
+        row_keys = pd.Series(
+            list(zip(frame[location_col].astype(str), frame[vehicle_col])), index=frame.index
+        )
+    else:
+        row_keys = frame[vehicle_col]
+    counts = row_keys.value_counts(sort=False)
+    trajectory_ids = list(counts.index)
+    order = np.random.default_rng(seed).permutation(len(trajectory_ids))
+    selected: list[object] = []
     total = 0
-    for vehicle_id in vehicle_ids:
-        selected.append(int(vehicle_id))
-        total += int(counts.loc[vehicle_id])
+    for index in order:
+        trajectory_id = trajectory_ids[int(index)]
+        selected.append(trajectory_id)
+        total += int(counts.loc[trajectory_id])
         if total >= target_rows:
             break
-    return frame[frame[vehicle_col].isin(selected)].copy()
+    return frame[row_keys.isin(selected)].copy()
 
 
 def build_proximity_edges(
@@ -252,11 +434,20 @@ def build_aligned_graph_windows(frame: pd.DataFrame, data_config: dict) -> list[
     label_col = data_config["label_column"]
     require_consecutive = bool(data_config.get("require_consecutive_frames", True))
 
-    by_frame: dict[int, list[tuple[int, np.ndarray, int]]] = {}
-    for vehicle_id, trajectory in frame.groupby(vehicle_col, sort=False):
+    group_columns = trajectory_group_columns(frame, data_config)
+    location_col = data_config.get("location_column")
+    use_location = bool(location_col and location_col in frame.columns)
+    by_frame: dict[tuple[str, int] | int, list[tuple[int, np.ndarray, int]]] = {}
+    frame_ids_by_graph: dict[tuple[str, int] | int, int] = {}
+    time_col = data_config.get("time_column")
+    use_time = bool(time_col and time_col in frame.columns)
+    for _, trajectory in frame.groupby(group_columns, sort=False):
+        vehicle_id = int(trajectory[vehicle_col].iloc[0])
+        location = trajectory[location_col].iloc[0] if use_location else None
         trajectory = trajectory.sort_values(frame_col, kind="stable")
         values = trajectory[features].to_numpy(dtype=np.float32)
         frame_ids = trajectory[frame_col].to_numpy(dtype=np.int64)
+        graph_times = trajectory[time_col].to_numpy(dtype=np.int64) if use_time else frame_ids
         labels = trajectory[label_col].to_numpy(dtype=np.int64)
         for end in range(sequence_length - 1, len(trajectory)):
             start = end - sequence_length + 1
@@ -264,14 +455,20 @@ def build_aligned_graph_windows(frame: pd.DataFrame, data_config: dict) -> list[
             if require_consecutive and not np.all(np.diff(window_frames) == 1):
                 continue
             final_frame = int(frame_ids[end])
-            by_frame.setdefault(final_frame, []).append(
+            final_time = int(graph_times[end])
+            graph_key = (str(location), final_time) if use_location else final_time
+            frame_ids_by_graph[graph_key] = final_frame
+            by_frame.setdefault(graph_key, []).append(
                 (int(vehicle_id), values[start : end + 1].copy(), int(labels[end]))
             )
 
     candidate_frames = [
-        frame_id
-        for frame_id in sorted(by_frame)
-        if len(by_frame[frame_id]) >= int(data_config["min_graph_nodes"])
+        graph_key
+        for graph_key in sorted(
+            by_frame,
+            key=lambda key: (key[1], key[0]) if isinstance(key, tuple) else (key, ""),
+        )
+        if len(by_frame[graph_key]) >= int(data_config["min_graph_nodes"])
     ]
     max_graphs = data_config.get("max_graphs")
     if max_graphs is not None and len(candidate_frames) > int(max_graphs):
@@ -280,8 +477,9 @@ def build_aligned_graph_windows(frame: pd.DataFrame, data_config: dict) -> list[
 
     reduction = data_config.get("graph_label_reduction", "max")
     samples: list[NumpyGraphSample] = []
-    for frame_id in candidate_frames:
-        records = sorted(by_frame[frame_id], key=lambda item: item[0])
+    for graph_key in candidate_frames:
+        records = sorted(by_frame[graph_key], key=lambda item: item[0])
+        frame_id = frame_ids_by_graph[graph_key]
         vehicle_ids = np.asarray([item[0] for item in records], dtype=np.int64)
         sequences = np.stack([item[1] for item in records]).astype(np.float32)
         node_labels = np.asarray([item[2] for item in records], dtype=np.int64)

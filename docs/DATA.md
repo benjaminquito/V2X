@@ -5,6 +5,10 @@ NGSIM trajectory files are not included in this repository. Download them from t
 [U.S. DOT NGSIM Open Data portal](https://data.transportation.gov/stories/s/Next-Generation-Simulation-NGSIM-Open-Data/i5zb-xe34/)
 under the applicable terms and keep them in `data/raw/`, which Git ignores.
 
+The loader accepts genuine CSV files and Excel OOXML workbooks. It detects the content signature,
+so a workbook accidentally stored with a `.csv` suffix remains readable; a correct `.xlsx` suffix
+is still recommended for clarity.
+
 ## Expected schema
 
 Required fields:
@@ -14,15 +18,19 @@ Required fields:
 | `Vehicle_ID` | Vehicle trajectory identifier |
 | `Frame_ID` | Ordered frame identifier |
 | `Local_X`, `Local_Y` | Position and proximity graph construction |
-| `v_Vel` | Temporal and spatial feature |
-| `v_Acc` | Temporal/spatial feature and optional risk heuristic |
+| `v_Vel` | Temporal and spatial feature; derived from `Local_Y` and time when absent |
+| `v_Acc` | Temporal/spatial feature and risk heuristic; derived from speed when absent |
 
 Label options:
 
 - Preferred: an existing `Risk_Class` containing `0`, `1`, `2` or recognized low/medium/high names.
 - Fallback: `Time_Headway` and `Space_Headway`, plus `v_Acc`, using configured thresholds.
 
-`Global_Time` is retained when available for traceability but is not currently a model feature.
+When `v_Vel` or `v_Acc` is absent and `data.kinematics.derive_missing` is enabled, the loader uses
+finite differences within each contiguous vehicle run. With the default NGSIM units,
+`Global_Time` is converted from milliseconds to seconds, speed is the absolute derivative of
+`Local_Y` in ft/s, and acceleration is the derivative of speed in ft/s². Existing fields are
+preserved. The manifest records whether source or derived values were used.
 
 ## Units
 
@@ -36,10 +44,9 @@ before normalization. Change it if the source file uses SI units.
 
 ## Multiple sites or recording periods
 
-Process one coherent NGSIM site/recording CSV at a time unless vehicle and frame identifiers have
-been made globally unique. Concatenating files with reused `Vehicle_ID` or `Frame_ID` values can
-merge unrelated trajectories or graph snapshots. Record the exact source files and hashes for each
-experiment.
+For combined site or recording files, retain `Location` and `Global_Time`. The loader separates
+locations, splits reused vehicle IDs at discontinuous frame runs, and constructs snapshots from
+location plus timestamp. Record the exact source files and hashes for each experiment.
 
 ## Sampling
 

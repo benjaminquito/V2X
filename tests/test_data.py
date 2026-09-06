@@ -1,3 +1,4 @@
+from copy import deepcopy
 from pathlib import Path
 
 import numpy as np
@@ -9,6 +10,7 @@ from v2x_risk.data import (
     build_aligned_graph_windows,
     build_proximity_edges,
     chronological_split_codes,
+    load_and_clean_ngsim,
     read_complete_trajectory_sample,
 )
 from v2x_risk.smoke import write_synthetic_ngsim
@@ -62,3 +64,70 @@ def test_chronological_split_includes_gaps() -> None:
     assert set(codes) == {-1, 0, 1, 2}
     assert np.flatnonzero(codes == 0).max() < np.flatnonzero(codes == 1).min()
     assert np.flatnonzero(codes == 1).max() < np.flatnonzero(codes == 2).min()
+
+
+def test_missing_kinematics_are_derived_per_contiguous_session(tmp_path: Path) -> None:
+    rows = []
+    for session_start in (1_000_000, 2_000_000):
+        for frame_id in range(20):
+            rows.append(
+                {
+                    "Location": "us-101",
+                    "Vehicle_ID": 1,
+                    "Frame_ID": frame_id,
+                    "Global_Time": session_start + frame_id * 100,
+                    "Local_X": 10.0,
+                    "Local_Y": frame_id,
+                    "Time_Headway": 3.0,
+                    "Space_Headway": 50.0,
+                }
+            )
+    csv_path = tmp_path / "missing_kinematics.csv"
+    pd.DataFrame(rows).to_csv(csv_path, index=False)
+    config = deepcopy(load_config(ROOT / "configs/default.yaml"))
+    config["data"]["sample_rows"] = None
+
+    frame = load_and_clean_ngsim(csv_path, config["data"])
+
+    assert frame["_Trajectory_Segment"].nunique() == 2
+    np.testing.assert_allclose(frame["v_Vel"], 10.0, atol=1e-9)
+    np.testing.assert_allclose(frame["v_Acc"], 0.0, atol=1e-9)
+
+
+def test_graphs_do_not_mix_locations_with_matching_frame_ids() -> None:
+    rows = []
+    for location in ("i-80", "us-101"):
+        for vehicle_id in (1, 2):
+            for frame_id in range(20):
+                rows.append(
+                    {
+                        "Location": location,
+                        "Vehicle_ID": vehicle_id,
+                        "Frame_ID": frame_id,
+                        "Global_Time": frame_id * 100,
+                        "Local_X": float(vehicle_id),
+                        "Local_Y": float(frame_id),
+                        "v_Vel": 10.0,
+                        "v_Acc": 0.0,
+                        "Risk_Class": 0,
+                    }
+                )
+    config = deepcopy(load_config(ROOT / "configs/default.yaml"))
+    config["data"]["max_graphs"] = None
+    samples = build_aligned_graph_windows(pd.DataFrame(rows), config["data"])
+
+    assert len(samples) == 12
+    assert all(len(sample.vehicle_ids) == 2 for sample in samples)
+
+
+def test_excel_content_is_detected_when_named_csv(tmp_path: Path) -> None:
+    source = write_synthetic_ngsim(tmp_path / "source.csv", vehicles=3, frames=20)
+    disguised_workbook = tmp_path / "NGSIM.csv"
+    pd.read_csv(source).to_excel(disguised_workbook, index=False, engine="openpyxl")
+    config = deepcopy(load_config(ROOT / "configs/default.yaml"))
+    config["data"]["sample_rows"] = None
+
+    frame = load_and_clean_ngsim(disguised_workbook, config["data"])
+
+    assert len(frame) == 60
+    assert {"v_Vel", "v_Acc", "Risk_Class"}.issubset(frame.columns)
