@@ -1,0 +1,68 @@
+seed: 2025
+deterministic: true
+
+data:
+  raw_csv: data/raw/NGSIM.csv
+  processed_path: data/processed/ngsim_aligned_graph_windows.npz
+  scaler_path: data/processed/scaler.json
+  manifest_path: data/processed/manifest.json
+  sample_rows: 1000000
+  sample_seed: 2025
+  csv_chunk_rows: 250000
+  sequence_length: 15
+  graph_radius_m: 20.0
+  coordinate_scale_to_m: 0.3048
+  min_graph_nodes: 2
+  max_graphs: 10988
+  require_consecutive_frames: true
+  feature_columns: [Local_X, Local_Y, v_Vel, v_Acc]
+  label_column: Risk_Class
+  frame_column: Frame_ID
+  vehicle_column: Vehicle_ID
+  time_column: Global_Time
+  graph_label_reduction: max
+  split:
+    train: 0.70
+    validation: 0.15
+    test: 0.15
+    strategy: chronological
+    gap_frames: 14
+  labeling:
+    source: existing_or_heuristic
+    low_class: 0
+    medium_class: 1
+    high_class: 2
+    # The manuscript names these signals but does not publish numerical cutoffs.
+    # These explicit defaults are repository assumptions and should be reviewed.
+    medium_time_headway_s: 2.0
+    high_time_headway_s: 1.0
+    medium_space_headway_ft: 30.0
+    high_space_headway_ft: 15.0
+    medium_acceleration_fps2: -6.56
+    high_acceleration_fps2: -11.20
+
+model:
+  input_dim: 4
+  lstm_hidden_1: 128
+  lstm_hidden_2: 64
+  gat_hidden_1: 32
+  gat_heads_1: 2
+  gat_hidden_2: 16
+  gat_heads_2: 1
+  fusion_dim: 32
+  fusion_attention_hidden: 16
+  num_classes: 3
+  dropout: 0.20
+
+training:
+  epochs: 5
+  batch_size: 32
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  class_weighting: balanced
+  fused_loss_weight: 1.0
+  temporal_aux_loss_weight: 0.2
+  spatial_aux_loss_weight: 0.2
+  checkpoint_path: results/regenerated/best_model.pt
+  metrics_path: results/regenerated/metrics.json
+  device: auto

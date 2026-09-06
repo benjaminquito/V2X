@@ -11,9 +11,8 @@ Using LSTM and GNN*. It implements the later reviewer-response design:
 - three-class prediction: Low (0), Medium (1), and High (2) risk.
 
 No trained weights or real-data results are claimed by this repository. The NGSIM data is not
-redistributed. Historical figures from the manuscript and the later development chat are recorded
-in [`results/paper_reported_metrics.json`](results/paper_reported_metrics.json) with their provenance
-and limitations. They must not be treated as reproduced results.
+redistributed. Figures stated in the manuscript or later development chat are historical claims and
+must not be treated as results reproduced by this code.
 
 ## Why this implementation differs from the uploaded manuscript
 
@@ -28,6 +27,10 @@ The earlier chat evaluation paired LSTM samples and graphs by truncating both co
 same length. That does not establish that the two inputs describe the same vehicle and frame. Here,
 each graph node is built only when that exact vehicle has a valid history ending at the graph's
 frame. Both branches therefore operate on an explicitly aligned sample.
+
+The later chat's 99.90% accuracy and 1.00 weighted-F1 claim is not a repository baseline: the shared
+evaluation snippet did not demonstrate trained fusion weights or key-based modality alignment. It
+is mentioned only to prevent accidental reuse as a regenerated result.
 
 ## Repository layout
 

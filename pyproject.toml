@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "v2x-risk"
+version = "0.1.0"
+description = "Reproducible LSTM-GAT model for V2X traffic anomaly and collision-risk classification"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{name = "Benjamin Quito"}]
+dependencies = [
+  "numpy>=1.26,<3",
+  "pandas>=2.1,<3",
+  "PyYAML>=6,<7",
+  "scikit-learn>=1.3,<2",
+  "torch>=2.2,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8,<9",
+  "ruff>=0.9,<1",
+]
+
+[project.scripts]
+v2x-preprocess = "v2x_risk.preprocess:main"
+v2x-train = "v2x_risk.train:main"
+v2x-evaluate = "v2x_risk.evaluate:main"
+v2x-smoke = "v2x_risk.smoke:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
