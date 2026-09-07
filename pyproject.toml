@@ -28,6 +28,7 @@ dev = [
 v2x-preprocess = "v2x_risk.preprocess:main"
 v2x-train = "v2x_risk.train:main"
 v2x-evaluate = "v2x_risk.evaluate:main"
+v2x-report = "v2x_risk.report:main"
 v2x-smoke = "v2x_risk.smoke:main"
 
 [tool.setuptools.packages.find]

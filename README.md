@@ -110,7 +110,13 @@ Generated files include:
 - `results/regenerated/best_model.pt`: best checkpoint by validation macro F1;
 - `results/regenerated/metrics.json`: training history and branch-level results;
 - `results/regenerated/test_metrics.json`: independently regenerated test metrics; and
-- `results/regenerated/test_predictions.csv`: per-frame predictions and learned fusion weights.
+- `results/regenerated/test_predictions.csv`: per-frame predictions and learned fusion weights;
+- `results/regenerated/run_summary.txt`: a plain-language completion summary; and
+- `results/regenerated/run_report.html`: a visual completion and results dashboard.
+
+At the end of `scripts/reproduce.sh`, the terminal prints `V2X RUN COMPLETED SUCCESSFULLY` followed
+by the main dataset counts, held-out metrics, and output locations. Open `run_report.html` in a web
+browser to verify the completed run visually.
 
 The default configuration follows the paper's 70/15/15 proportions and five training epochs. The
 split is chronological and inserts a 14-frame gap at boundaries to reduce leakage from overlapping
