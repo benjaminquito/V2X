@@ -1,5 +1,9 @@
 # V2X Traffic Anomaly and Collision-Risk Model
 
+[![CI](https://github.com/benjaminquito/V2X/actions/workflows/ci.yml/badge.svg)](https://github.com/benjaminquito/V2X/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/v2x-risk.svg)](https://pypi.org/project/v2x-risk/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 This repository is a reproducible implementation of the revised model associated with
 *Predicting Traffic Anomalies and Collision Risks in V2X Systems: A Deep Learning Approach
 Using LSTM and GNN*. It implements the later reviewer-response design:
@@ -47,6 +51,14 @@ tests/                   Unit and end-to-end smoke tests
 
 Python 3.10 or newer is required.
 
+Install the published package:
+
+```bash
+python -m pip install v2x-risk
+```
+
+For repository development, create an isolated environment and install the editable package:
+
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
@@ -68,7 +80,7 @@ so no separately compiled graph library is required.
 ## Quick execution check
 
 The smoke run creates a small synthetic, NGSIM-shaped dataset, preprocesses it, trains one epoch,
-and evaluates all three branches:
+evaluates all three branches, and writes a visual report:
 
 ```bash
 python -m v2x_risk.smoke --config configs/smoke.yaml
@@ -76,6 +88,9 @@ python -m v2x_risk.smoke --config configs/smoke.yaml
 
 Smoke metrics only verify that the pipeline executes. They are not research results and must not be
 compared with the paper.
+
+Open `results/regenerated/smoke/run_report.html` after the command completes to inspect the visual
+pipeline summary.
 
 ## Reproduce with NGSIM
 

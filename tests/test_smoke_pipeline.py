@@ -11,4 +11,7 @@ def test_end_to_end_smoke_pipeline(tmp_path: Path) -> None:
     assert (tmp_path / "best_model.pt").is_file()
     assert (tmp_path / "metrics.json").is_file()
     assert (tmp_path / "test_metrics.json").is_file()
+    assert (tmp_path / "run_report.html").is_file()
+    assert (tmp_path / "run_summary.txt").is_file()
     assert result["evaluation"]["status"] == "regenerated"
+    assert result["report"]["report_path"] == tmp_path / "run_report.html"

@@ -8,6 +8,7 @@ import pandas as pd
 from .config import load_config, with_overrides
 from .evaluate import evaluate_checkpoint
 from .preprocess import preprocess
+from .report import generate_run_report
 from .training import train_model
 
 
@@ -61,10 +62,12 @@ def run_smoke(config_path: str | Path, work_dir: str | Path | None = None) -> di
     preprocess_manifest = preprocess(config)
     training_results = train_model(config)
     evaluation_results = evaluate_checkpoint(config)
+    report_results = generate_run_report(config)
     return {
         "preprocess": preprocess_manifest,
         "training": training_results,
         "evaluation": evaluation_results,
+        "report": report_results,
     }
 
 
@@ -81,7 +84,8 @@ def main() -> None:
     metrics = result["evaluation"]["branches"]["fused"]
     print(
         "Smoke test completed; synthetic metrics are execution checks only: "
-        f"accuracy={metrics['accuracy']:.4f}, macro_f1={metrics['macro_f1']:.4f}"
+        f"accuracy={metrics['accuracy']:.4f}, macro_f1={metrics['macro_f1']:.4f}\n"
+        f"Visual report: {result['report']['report_path'].resolve()}"
     )
 
 

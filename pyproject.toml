@@ -9,6 +9,24 @@ description = "Reproducible LSTM-GAT model for V2X traffic anomaly and collision
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{name = "Benjamin Quito"}]
+license = "MIT"
+keywords = [
+  "v2x",
+  "traffic-anomaly-detection",
+  "collision-risk",
+  "lstm",
+  "graph-attention-network",
+  "reproducible-research",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Education",
+  "Intended Audience :: Science/Research",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
   "numpy>=1.26,<3",
   "openpyxl>=3.1,<4",
@@ -30,6 +48,12 @@ v2x-train = "v2x_risk.train:main"
 v2x-evaluate = "v2x_risk.evaluate:main"
 v2x-report = "v2x_risk.report:main"
 v2x-smoke = "v2x_risk.smoke:main"
+
+[project.urls]
+Homepage = "https://github.com/benjaminquito/V2X"
+Repository = "https://github.com/benjaminquito/V2X"
+Paper = "https://doi.org/10.4236/ojsst.2026.163010"
+Issues = "https://github.com/benjaminquito/V2X/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

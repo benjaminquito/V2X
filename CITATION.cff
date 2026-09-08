@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the associated article."
+title: "V2X Traffic Anomaly and Collision-Risk Model"
+type: software
+authors:
+  - family-names: "Quito"
+    given-names: "Benjamin"
+version: 0.1.0
+date-released: 2026-09-08
+license: MIT
+repository-code: "https://github.com/benjaminquito/V2X"
+url: "https://github.com/benjaminquito/V2X"
+preferred-citation:
+  type: article
+  authors:
+    - family-names: "Quito"
+      given-names: "Benjamin"
+  title: "Predicting Traffic Anomalies and Collision Risks in V2X Systems: A Deep Learning Approach Using LSTM and GNN"
+  journal: "Open Journal of Safety Science and Technology"
+  volume: 16
+  issue: 3
+  year: 2026
+  date-published: 2026-08-19
+  doi: "10.4236/ojsst.2026.163010"
