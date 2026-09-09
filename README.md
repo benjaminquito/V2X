@@ -23,16 +23,16 @@ must not be treated as results reproduced by this code.
 The uploaded manuscript describes an earlier model in several places: 50-step, three-feature
 sequences; two GCN layers; continuous risk scores; and fixed 0.6/0.4 fusion. The later revision
 changed these to 15-step, four-feature inputs; GAT; three-class outputs; and learned attention
-fusion. This repository implements the later design requested for the reviewer response while
+fusion. This repository implements the latter design requested for the reviewer response while
 preserving the original claims as historical metadata only. See
 [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md) for the complete reconciliation.
 
-The earlier chat evaluation paired LSTM samples and graphs by truncating both collections to the
+The earlier evaluation paired LSTM samples and graphs by truncating both collections to the
 same length. That does not establish that the two inputs describe the same vehicle and frame. Here,
 each graph node is built only when that exact vehicle has a valid history ending at the graph's
-frame. Both branches therefore operate on an explicitly aligned sample.
+frame. Both branches, therefore, operate on an explicitly aligned sample.
 
-The later chat's 99.90% accuracy and 1.00 weighted-F1 claim is not a repository baseline: the shared
+The latter 99.90% accuracy and 1.00 weighted-F1 claim is not a repository baseline: the shared
 evaluation snippet did not demonstrate trained fusion weights or key-based modality alignment. It
 is mentioned only to prevent accidental reuse as a regenerated result.
 
@@ -143,9 +143,9 @@ Core inputs are `Vehicle_ID`, `Frame_ID`, `Local_X`, and `Local_Y`. The preferre
 `v_Vel` and `v_Acc`. When either kinematic field is absent, preprocessing derives it from
 longitudinal position and elapsed time using the explicit settings under `data.kinematics`.
 Existing kinematic columns are never replaced. If the CSV already contains `Risk_Class`, it is used
-after validation. Otherwise, `Time_Headway` and `Space_Headway` are also required and labels are
+after validation. Otherwise, `Time_Headway` and `Space_Headway` are also required, and labels are
 generated from the explicit thresholds in the configuration. The manuscript did not state the
-numerical labeling thresholds, so the supplied values are transparent repository assumptions that
+numerical labelling thresholds, so the supplied values are transparent repository assumptions that
 researchers should review or replace.
 
 Combined files should include `Location`. Preprocessing keeps locations separate, segments reused
